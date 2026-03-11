@@ -1,0 +1,765 @@
+
+<!doctype html>
+
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1.0, user-scalable=yes">
+  <meta name="theme-color" content="#4F7DC9">
+  <meta charset="UTF-8">
+  <title>Postcards from the Cloud: Chaining MCP Servers with Gemini ADK 📬☁️</title>
+  <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Source+Code+Pro:400|Roboto:400,300,400italic,500,700|Roboto+Mono">
+  <link rel="stylesheet" href="//fonts.googleapis.com/icon?family=Material+Icons">
+  <link rel="stylesheet" href="https://storage.googleapis.com/claat-public/codelab-elements.css">
+  <style>
+    .success {
+      color: #1e8e3e;
+    }
+    .error {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <google-codelab-analytics gaid="UA-49880327-14" ga4id=""></google-codelab-analytics>
+  <google-codelab codelab-gaid=""
+                  codelab-ga4id=""
+                  id="postcards-lab"
+                  title="Postcards from the Cloud: Chaining MCP Servers with Gemini ADK 📬☁️"
+                  environment="web"
+                  feedback-link="https://linktr.ee/loveejain">
+    
+      <google-codelab-step label="Overview" duration="5">
+        <p>What happens when you combine MCP servers, Gemini ADK, Cloud Run, and a little creative AI?</p>
+<p>In this lab you will transition from simple chat interfaces to high-utility &#34;Action Agents.&#34; You will build a multi-tool agent capable of chaining geospatial data, live weather services, and generative AI to create and deliver personalized &#34;Weather Postcards&#34; directly to your inbox. By the end of this lab, you&#39;ll understand how to bridge local development with cloud-scale deployment through the modular MCP-based architecture.</p>
+<p>What you will learn:</p>
+<ul>
+<li><strong>MCP Foundations:</strong> Create, deploy, and manage your own custom MCP servers.</li>
+<li><strong>Service Orchestration:</strong> Chain remote MCP tools (Maps, Weather, Imagen) along with stdio servers (AgentMail) using the Gemini ADK.</li>
+<li><strong>Production Deployment:</strong> Explore real-world patterns for deploying agents and tools on Cloud Run.</li>
+<li><strong>Agent-as-a-Service:</strong> Learn how to expose your agent as a scalable API.</li>
+</ul>
+<p>We&#39;ll progressively layer complexity, keeping advanced pieces optional and adding checkpoints, so you can follow along at your own pace.</p>
+<p>Here are the Github Repos for <a href="https://github.com/Lovee93/weather_mcp_python" target="_blank">weather-mcp</a> server and <a href="https://github.com/Lovee93/postcards_from_cloud" target="_blank">postcards_from_cloud</a> ADK project.</p>
+<p>Ready to break the pattern? Let&#39;s build.</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Create and deploy custom Weather MCP server" duration="15">
+        <h2 is-upgraded>Initial setup</h2>
+<p>📌 We will use Cloud Shell for this lab. To access go to <a href="https://console.cloud.google.com/" target="_blank">https://console.cloud.google.com/</a>, and press G and S.</p>
+<p>Next create a root directory that will store all your MCP servers and ADK projects.</p>
+<pre><code>mkdir postcards_from_cloud
+cd postcards_from_cloud
+</code></pre>
+<p>Make sure all the resources in this directory.</p>
+<p>📌 We will use <code>uv</code> which is the package or dependency manager in Python, it makes it super easy to create and manage virtual environments and manage dependencies in there.</p>
+<h2 is-upgraded>Let&#39;s create weather MCP server</h2>
+<ol type="1">
+<li>We will use the standard example of customer weather MCP server which uses US National Weather Service API. The API uses the geo-coordinates to tell the weather of a <strong>US location</strong>.</li>
+</ol>
+<pre><code># Create a new directory for our project
+uv init weather
+cd weather
+
+# Create virtual environment and activate it
+uv venv
+source .venv/bin/activate
+
+# Install dependencies
+uv add fastmcp httpx
+
+# Create our server file
+touch weather.py
+</code></pre>
+<ol type="1" start="2">
+<li>Let&#39;s build the server next:</li>
+</ol>
+<pre><code>from typing import Any
+
+import asyncio
+import httpx
+import os
+from fastmcp import FastMCP
+
+# Initialize FastMCP server
+mcp = FastMCP(&#34;weather&#34;)
+
+# Constants
+NWS_API_BASE = &#34;https://api.weather.gov&#34;
+USER_AGENT = &#34;weather-app/1.0&#34;
+</code></pre>
+<ol type="1" start="3">
+<li>Add helper functions:</li>
+</ol>
+<pre><code>async def make_nws_request(url: str) -&gt; dict[str, Any] | None:
+    &#34;&#34;&#34;Make a request to the NWS API with proper error handling.&#34;&#34;&#34;
+    headers = {&#34;User-Agent&#34;: USER_AGENT, &#34;Accept&#34;: &#34;application/geo+json&#34;}
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, headers=headers, timeout=30.0)
+            response.raise_for_status()
+            return response.json()
+        except Exception:
+            return None
+</code></pre>
+<ol type="1" start="4">
+<li>Implement tool execution:</li>
+</ol>
+<pre><code>@mcp.tool()
+async def get_forecast(latitude: float, longitude: float) -&gt; str:
+    &#34;&#34;&#34;Get weather forecast for a location.
+
+    Args:
+        latitude: Latitude of the location
+        longitude: Longitude of the location
+    &#34;&#34;&#34;
+    # First get the forecast grid endpoint
+    points_url = f&#34;{NWS_API_BASE}/points/{latitude},{longitude}&#34;
+    points_data = await make_nws_request(points_url)
+
+    if not points_data:
+        return &#34;Unable to fetch forecast data for this location.&#34;
+
+    # Get the forecast URL from the points response
+    forecast_url = points_data[&#34;properties&#34;][&#34;forecast&#34;]
+    forecast_data = await make_nws_request(forecast_url)
+
+    if not forecast_data:
+        return &#34;Unable to fetch detailed forecast.&#34;
+
+    # Format the periods into a readable forecast
+    periods = forecast_data[&#34;properties&#34;][&#34;periods&#34;]
+    forecasts = []
+    for period in periods[:5]:  # Only show next 5 periods
+        forecast = f&#34;&#34;&#34;
+          {period[&#34;name&#34;]}:
+          Temperature: {period[&#34;temperature&#34;]}°{period[&#34;temperatureUnit&#34;]}
+          Wind: {period[&#34;windSpeed&#34;]} {period[&#34;windDirection&#34;]}
+          Forecast: {period[&#34;detailedForecast&#34;]}
+        &#34;&#34;&#34;
+        forecasts.append(forecast)
+
+    return &#34;\n---\n&#34;.join(forecasts)
+</code></pre>
+<ol type="1" start="5">
+<li>Let&#39;s add the main function to initialise and run the server :</li>
+</ol>
+<pre><code>if __name__ == &#34;__main__&#34;:
+    # Initialize and run the server
+    port = int(os.environ.get(&#34;PORT&#34;, 8080))
+    asyncio.run(
+        mcp.run_async(
+            transport=&#34;http&#34;,
+            host=&#34;0.0.0.0&#34;,
+            port=port,
+        )
+    )
+</code></pre>
+<ol type="1" start="6">
+<li>It is ready, let&#39;s run the server:</li>
+</ol>
+<pre><code>uv run weather.py
+</code></pre>
+<ol type="1" start="7">
+<li>How do we test it though?</li>
+</ol>
+<p>a. <strong>MCP inspectors</strong>! 🔎</p>
+<pre><code>npx @modelcontextprotocol/inspector
+</code></pre>
+<p>b. The Glama inspector - remote inspector! 🔎💻</p>
+<p><a href="https://glama.ai/mcp/inspector" target="_blank">https://glama.ai/mcp/inspector</a></p>
+<p>But for that we first need to deploy! So, let&#39;s create the Dockerfile to define the image for MCP and deploy on cloud run.</p>
+<ol type="1" start="8">
+<li>Create the Dockerfile</li>
+</ol>
+<pre><code>FROM python:3.12-slim
+
+# Install uv from official image
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+
+# Set the working directory
+WORKDIR /app
+
+# Copy dependency files
+COPY pyproject.toml uv.lock ./
+
+# Install dependencies into the local .venv
+RUN uv sync --frozen --no-dev
+
+# Copy weather.py
+COPY weather.py .
+
+# Cloud Run sets the PORT environment variable natively
+ENV PORT=8080
+
+# Expose the port
+EXPOSE $PORT
+
+# Run the weather server using uv
+CMD [&#34;uv&#34;, &#34;run&#34;, &#34;weather.py&#34;]
+</code></pre>
+<ol type="1" start="9">
+<li>Let&#39;s deploy on cloud run! But first enable the Cloud Run and Cloud Build APIs:</li>
+</ol>
+<pre><code>gcloud services enable run.googleapis.com \
+cloudbuild.googleapis.com
+</code></pre>
+<p>Now deploy:</p>
+<pre><code>gcloud run deploy weather-mcp \
+  --source . \
+  --allow-unauthenticated \
+  --region us-central1
+</code></pre>
+<p>⚠️ Note if you get any account login errors, you can always run:</p>
+<pre><code>gcloud auth login
+</code></pre>
+<ol type="1" start="10">
+<li>It&#39;s time to test our deployed custom weather MCP server in <a href="https://glama.ai/mcp/inspector" target="_blank">Glama Inspector</a>!</li>
+</ol>
+<p class="image-container"><img alt="Glama inspector weather-mcp" src="img/60bf280b3c0daf9.png"></p>
+<p>Next, let&#39;s wire this up to an agent!</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Building Your First ADK Agent" duration="10">
+        <p>Now that your weather-mcp server is ready, let&#39;s create the client - our agent using <a href="https://google.github.io/adk-docs/" target="_blank">Agent Development Kit</a>.</p>
+<ol type="1">
+<li>For this you will need the API key which is linked to an active billing account. So let&#39;s get that from <a href="https://aistudio.google.com/" target="_blank">AI Studio</a>.</li>
+</ol>
+<p class="image-container"><img alt="AI studio API key" src="img/b4a9cf890a63aca.png"></p>
+<ol type="1" start="2">
+<li>Again let&#39;s use the magic of uv and create a new ADK project in <code>/postcards_from_cloud</code>.</li>
+</ol>
+<pre><code>uv run adk create postcard
+</code></pre>
+<p>Choose the default model, and select Google AI. Enter the API key you got from the AI studio and done! Your project is ready.</p>
+<ol type="1" start="3">
+<li>Let&#39;s run it:</li>
+</ol>
+<pre><code>uv run adk web
+</code></pre>
+<p class="image-container"><img alt="ADK web first run" src="img/b2fd0bacc3e361cd.png"></p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Add custom MCP server to your Agent: stdio vs http" duration="10">
+        <p>Let&#39;s call our custom weather mcp server from our agent!</p>
+<ol type="1">
+<li>Add required imports:</li>
+</ol>
+<pre><code>from google.adk.tools.mcp_tool import McpToolset
+from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
+</code></pre>
+<ol type="1" start="2">
+<li>Next, we will add MCPToolSet that defines how to call our weather mcp server.</li>
+</ol>
+<p>📌 Now if you are connecting to a server running locally, in that scenario, you use MCP stdio connection, where you specify the command and the agruments. But in real world, when you would look at architecting real services, HTTP becomes a natural choice as it allows you to scale your services and agents independently.</p>
+<pre><code>get_weather = McpToolset(
+    connection_params=StreamableHTTPConnectionParams(
+        url=&#34;your-cloud-run-weather-mcp-url/mcp&#34;,
+        timeout=60, # This allows to initialise mcp servers on the go, without timing out
+    )
+)
+</code></pre>
+<ol type="1" start="3">
+<li>Let&#39;s pass the tools from the MCP server to our agent and update the agent description and instructions.</li>
+</ol>
+<pre><code>root_agent = Agent(
+    model=&#39;gemini-2.5-flash&#39;,
+    name=&#39;root_agent&#39;,
+    description=&#39;A helpful assistant for giving weather updates of a US location.&#39;,
+    instruction=&#34;&#34;&#34;
+        You are helpful assistant that tells the weather of a US location using &#39;get_weather&#39; tool.
+    &#34;&#34;&#34;,
+    tools=[get_weather]
+)
+</code></pre>
+<ol type="1" start="4">
+<li>Let&#39;s give it a go:</li>
+</ol>
+<pre><code>uv run adk web
+</code></pre>
+<p class="image-container"><img alt="ADK running weather MCP server" src="img/50fa2a6df0c9854b.png"></p>
+<p>Nice one! We are already calling weather mcp server from our agent. Let&#39;s get those coordinates now!</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Configure and use Google Maps Remote MCP server" duration="15">
+        <p>Like all major players, Google has released it&#39;s MCP servers too! Some still experimental, some GA. You can check them all out here: <a href="https://docs.cloud.google.com/mcp/overview" target="_blank">https://docs.cloud.google.com/mcp/overview</a>.</p>
+<p>📌 We will use <a href="https://developers.google.com/maps/ai/grounding-lite" target="_blank">Maps Grounding Lite MCP server</a>. And hence to be able to use it we need to enable the Maps API in our console and get an API key.</p>
+<ol type="1">
+<li>Enable Google Maps Grounding Lite API. Go to <a href="https://console.cloud.google.com/apis/library/mapstools.googleapis.com" target="_blank">Maps Grounding Lite</a> in your console and enable the API.</li>
+</ol>
+<p class="image-container"><img alt="Enable Google Maps Grounding Lite API" src="img/cec37ba28469a760.png"></p>
+<ol type="1" start="2">
+<li>Next we need to create an API key to access this API. Let&#39;s do this via CLI:</li>
+</ol>
+<pre><code>gcloud services api-keys create \
+  --display-name=&#34;Maps Grounding Lite Key&#34; \
+  --api-target=service=mapstools.googleapis.com \
+  --project=YOUR_PROJECT_ID
+</code></pre>
+<ol type="1" start="3">
+<li>Copy the API key you get in the terminal. You can also confirm if your API key is created by going to: <a href="https://console.cloud.google.com/apis/credentials" target="_blank">https://console.cloud.google.com/apis/credentials</a></li>
+</ol>
+<p class="image-container"><img alt="Confirm API key" src="img/a8221715c8e45098.png"></p>
+<p>📌 We can checkout the Maps server and tools it offers in the <a href="https://glama.ai/mcp/inspector" target="_blank">Glama Inspector</a> 🔎.</p>
+<p class="image-container"><img alt="Checkout Google Maps MCP server in Glama" src="img/1f63a2e783b50d7e.png"></p>
+<ol type="1" start="4">
+<li>Let&#39;s add this API key to the .env file we have in the ADK project.</li>
+</ol>
+<pre><code>GOOGLE_MAPS_API_KEY=your-api-key
+</code></pre>
+<ol type="1" start="5">
+<li>Next, update the imports:</li>
+</ol>
+<pre><code>import os
+</code></pre>
+<ol type="1" start="6">
+<li>Next, configure the remote Google Maps MCP server for our agent to pick up.</li>
+</ol>
+<pre><code>google_maps_api_key = os.environ.get(&#34;GOOGLE_MAPS_API_KEY&#34;)
+if not google_maps_api_key:
+    raise ValueError(&#34;GOOGLE_MAPS_API_KEY environment variable is not set&#34;)
+headers = {
+    &#34;X-Goog-Api-Key&#34;: google_maps_api_key,
+}
+get_coordinates = McpToolset(
+    connection_params=StreamableHTTPConnectionParams(
+        url=&#34;https://mapstools.googleapis.com/mcp&#34;,
+        headers=headers,
+        timeout=10,
+    ), tool_filter=[&#34;search_places&#34;]
+)
+</code></pre>
+<ol type="1" start="7">
+<li>Finally let&#39;s pass the tools from this MCPToolSet to our agent and update the description and instructions:</li>
+</ol>
+<pre><code>root_agent = Agent(
+    model=&#39;gemini-2.5-flash&#39;,
+    name=&#39;root_agent&#39;,
+    description=&#39;A helpful assistant for giving weather updates of a US location.&#39;,
+    instruction=&#34;&#34;&#34;
+        You are helpful assistant that tells the weather of a US location using &#39;get_weather&#39; tool.
+        When the user provides a location, use &#39;get_coordinates&#39; to get the latitude and longitude of the place.
+        And pass it to the &#39;get_weather&#39; tool to provide weather details.
+    &#34;&#34;&#34;,
+    tools=[get_coordinates, get_weather]
+)
+</code></pre>
+<ol type="1" start="8">
+<li>Ready to checkout?</li>
+</ol>
+<pre><code>uv run adk web
+</code></pre>
+<p class="image-container"><img alt="ADK chaining Maps and Weather MCP servers" src="img/a9797f14aee2072d.png"></p>
+<p>Woohoo 🎉 You have implementing chaining of MCP servers with Google Maps and a custom Weather MCP server in ADK!</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="🏁🏁🏁 Are you ready to kick it up a notch?" duration="5">
+        <p>This is our <strong>checkpoint</strong> 🏁 - we have made good progress so far, from here we have two options:</p>
+<ul>
+<li>Continue the momentum, deploy 2 more MCP servers and see everything in action!</li>
+<li>Pivot here. Create a function tool that fakes sending email and learn how to use it with the current setup.</li>
+</ul>
+<p>If you choose to continue the momentum, <strong>Click Next</strong>!</p>
+<p>Else, let&#39;s keep things simple for today.</p>
+<p>We will simply create a function that fakes sending an email. And use this function tool along with our MCP tools - and see all of it chaining together.</p>
+<ol type="1">
+<li>Let&#39;s create the function:</li>
+</ol>
+<pre><code>def mock_send_email(email: str) -&gt; str:
+    return f&#34;Thanks I have sent the email on {email}&#34;
+</code></pre>
+<ol type="1" start="2">
+<li>Let&#39;s pass it as a tool and update the description and instructions of the agent.</li>
+</ol>
+<pre><code>root_agent = Agent(
+    model=&#39;gemini-2.5-flash&#39;,
+    name=&#39;root_agent&#39;,
+    description=&#39;A helpful assistant for giving weather updates of a US location and sending that weather summary on emails.&#39;,
+    instruction=&#34;&#34;&#34;
+        You are helpful assistant that tells the weather of a US location using &#39;get_weather&#39; tool.
+        When the user provides a location, use &#39;get_coordinates&#39; to get the latitude and longitude of the place.
+        And pass it to the &#39;get_weather&#39; tool to provide weather details.
+        You can also send the weather summary on the email using &#39;mock_send_email&#39; tool.
+    &#34;&#34;&#34;,
+    tools=[get_coordinates, get_weather, mock_send_email]
+)
+</code></pre>
+<ol type="1" start="3">
+<li>Run it again:</li>
+</ol>
+<pre><code>uv run adk web
+</code></pre>
+<p class="image-container"><img alt="Chaining with MCP + Function tools" src="img/67f12194ea489eb3.png"></p>
+<p>Well done! 🎉 You have now chained the custom MCP tools with a function tool! It is time to deploy.</p>
+<p>You can use the following command to deploy your agent:</p>
+<pre><code>uv run adk deploy cloud_run \
+  --project=your-project \
+  --with_ui \
+  --region=us-central1\
+  --service_name=adk-postcards \
+  ./postcards
+</code></pre>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="🏁 Explore and deploy Genmedia Imagen MCP server" duration="15">
+        <p>So glad you decided to take up the challenge! Let&#39;s make it worth. We will be exploring another experimental project from Google! There are experimental MCP servers for generating media - videos, images, music, etc. So let&#39;s checkout: <a href="https://github.com/GoogleCloudPlatform/vertex-ai-creative-studio/tree/main/experiments/mcp-genmedia" target="_blank">MCP Genmedia</a>.</p>
+<ol type="1">
+<li>Let&#39;s clone this repo:</li>
+</ol>
+<pre><code>git clone https://github.com/GoogleCloudPlatform/vertex-ai-creative-studio.git
+cd vertex-ai-creative-studio/experiments/mcp-genmedia/mcp-genmedia-go
+</code></pre>
+<p>📌 <strong>Note</strong>: You can install the Imagen MCP server and checkout how it works by following the instructions in the repo. However, since Cloud Shell has a strict 5GB persistent memory - it sometimes can run out of space, so it is recommended to install only in your local development environment. And that is why we will skip to deploying it in the following steps.</p>
+<ol type="1" start="2">
+<li>Create a Dockerfile in under <code>vertex-ai-creative-studio/experiments/mcp-genmedia/mcp-genmedia-go</code>:</li>
+</ol>
+<pre><code># Build stage
+FROM golang:1.24-bookworm AS builder
+
+# Set the working directory
+WORKDIR /app
+
+# Copy only the specific server and common packages
+COPY mcp-common ./mcp-common
+COPY mcp-imagen-go ./mcp-imagen-go
+
+# Build the specific server
+WORKDIR /app/mcp-imagen-go
+# Use the -o flag to explicitly name the output binary &#39;mcp-imagen-go&#39;
+RUN CGO_ENABLED=0 GOOS=linux go build -o /mcp-imagen-go .
+
+# Run stage (minimal image)
+FROM debian:bookworm-slim
+
+# Install CA certificates for HTTPS requests to GCP/GenAI
+RUN apt-get update &amp;&amp; apt-get install -y ca-certificates &amp;&amp; rm -rf /var/lib/apt/lists/*
+
+# Copy the binary from the builder
+COPY --from=builder /mcp-imagen-go /mcp-imagen-go
+
+# Set default transport to HTTP and expose port 8080 (Cloud Run default)
+ENV PORT=8080
+EXPOSE 8080
+
+# Run the server
+ENTRYPOINT [&#34;/mcp-imagen-go&#34;, &#34;--transport&#34;, &#34;http&#34;]
+</code></pre>
+<ol type="1" start="3">
+<li>Deploy the Imagen MCP server:</li>
+</ol>
+<pre><code>gcloud run deploy mcp-imagen-go \
+  --source . \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --set-env-vars PROJECT_ID=$(gcloud config get project) \
+  --startup-probe=timeoutSeconds=10,tcpSocket.port=8080
+</code></pre>
+<ol type="1" start="4">
+<li>Once the deployment is successful, you can checkout your deployed Imagen MCP server on Glama Inspector: 🔎</li>
+</ol>
+<p class="image-container"><img alt="Imagen in Glama Inspector" src="img/5492562294198794.png"></p>
+<p>You&#39;d also notice that Imagen supports the image created to be directly uploaded to a cloud storage bucket and that is exactly what we are going to use.</p>
+<p class="image-container"><img alt="Imagen in Glama Inspector - GCS option" src="img/6c8451bf58a500fb.png"></p>
+<ol type="1" start="5">
+<li>To be able to use Google Cloud Storage (or GCS) we need to do the following:</li>
+</ol>
+<ul>
+<li>Create a GCS that allows public access to viewing the objects</li>
+<li>Allow our cloud run service to be able to call Imagen Model</li>
+<li>Allow our cloud run service to be able to store images on Cloud Storage</li>
+</ul>
+<p>📌 Run the following script in the cloud shell terminal to set it all up in one go. If you get prompted for conditions - just select None. That usually happens if you have already have some IAM roles may be with some conditions such as time limits - we want none at this stage.</p>
+<pre><code># 1. Get the current GCP project ID and Project Number
+export PROJECT_ID=$(gcloud config get-value project)
+export PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format=&#34;value(projectNumber)&#34;)
+export BUCKET_NAME=&#34;${PROJECT_ID}-genmedia-mcp-bucket&#34;
+
+# 2. Construct the Default Compute Service Account email
+export SERVICE_ACCOUNT=&#34;${PROJECT_NUMBER}-compute@developer.gserviceaccount.com&#34;
+
+# 3. Grant the &#34;Vertex AI User&#34; role to allow calling Imagen
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member=&#34;serviceAccount:$SERVICE_ACCOUNT&#34; \
+    --role=&#34;roles/aiplatform.user&#34;
+
+# 4. Create the GCS Bucket in us-central1 (if it doesn&#39;t already exist)
+#    We use gsutil (or gcloud storage) to create the bucket.
+if ! gcloud storage buckets describe gs://$BUCKET_NAME &gt;/dev/null 2&gt;&amp;1; then
+    echo &#34;Creating bucket gs://$BUCKET_NAME...&#34;
+    gcloud storage buckets create gs://$BUCKET_NAME --project=$PROJECT_ID --location=us-central1
+else
+    echo &#34;Bucket gs://$BUCKET_NAME already exists.&#34;
+fi
+
+# 5. Grant the &#34;Storage Object Admin&#34; role to allow saving images to GCS buckets
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member=&#34;serviceAccount:$SERVICE_ACCOUNT&#34; \
+    --role=&#34;roles/storage.objectAdmin&#34;
+
+# 6. Grant the storage bucket Object Viewer role to allow accessing created images
+gcloud storage buckets add-iam-policy-binding gs://$BUCKET_NAME \
+    --member=allUsers \
+    --role=roles/storage.objectViewer
+
+
+echo &#34;Setup complete! Your storage bucket is: gs://$BUCKET_NAME&#34;
+
+</code></pre>
+<p>Awesome, it is time to use our MCP server in ADK!</p>
+<ol type="1" start="6">
+<li>Add the deployed Imagen MCP server to ADK:</li>
+</ol>
+<pre><code>cloud_storage_url = &#34;gs://your-project-genmedia-mcp-bucket&#34; # add the gcs url returned from previous step
+generate_weather_postcard = McpToolset(
+    connection_params=StreamableHTTPConnectionParams(
+        url=&#34;your-cloud-run-imagen-mcp-url//mcp&#34;,
+        timeout=60,
+        
+    ), tool_filter=[&#34;imagen_t2i&#34;]
+)
+</code></pre>
+<ol type="1" start="7">
+<li>Add it to our list of toolset that agent can use and update agent description and instructions:</li>
+</ol>
+<pre><code>root_agent = Agent(
+    model=&#39;gemini-2.5-flash&#39;,
+    name=&#39;root_agent&#39;,
+    description=&#39;A helpful assistant for giving weather updates of a US location and creating weather postcards.&#39;,
+    instruction=f&#34;&#34;&#34;
+        You are helpful assistant that tells the weather of a US location using &#39;get_weather&#39; tool.
+        When the user provides a location, use &#39;get_coordinates&#39; to get the latitude and longitude of the place.
+        And pass it to the &#39;get_weather&#39; tool to provide weather details.
+        When user asks to generate the postcard, use the &#39;generate_weather_postcard&#39; tool.
+        You will generate a postcard image of aspect_ratio of 16:9 for the weather summary in the place specified by the user.
+        The image should be animated and colorful.
+        Store the generated postcard image to google cloud storage: {cloud_storage_url}.
+        Return the HTTPS URL to the user!
+    &#34;&#34;&#34;,
+    tools=[get_coordinates, get_weather, generate_weather_postcard]
+)
+</code></pre>
+<ol type="1" start="8">
+<li>Let&#39;s run:</li>
+</ol>
+<p>📌 <strong>Note</strong> at any point if you start getting <em>429 Resource Exhausted</em> errors, switch to using Vertex AI. All you need is to update your <code>.env</code> file:</p>
+<pre><code>GOOGLE_GENAI_USE_VERTEXAI=1
+GOOGLE_GOOGLE_CLOUD_PROJECT=your-project
+GOOGLE_CLOUD_LOCATION=us-central1
+</code></pre>
+<pre><code>uv run adk web
+</code></pre>
+<p class="image-container"><img alt="ADK chaining Maps + weather + Imagen" src="img/7b27c784dcc0fdf0.png"></p>
+<p>This is what you&#39;d see on the GCS:</p>
+<p class="image-container"><img alt="Image generated in GCS" src="img/60a7757838381629.png"></p>
+<p>Hooray! 🥳 You have configured another MCP server!</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="🏁 Setup, deploy and use AgentMail MCP server" duration="15">
+        <p>It&#39;s time for our final MCP server with which we will be able to get these postcards delivered straight to our inboxes!📬</p>
+<p>For this we will use a third party integration supported by ADK called <a href="https://google.github.io/adk-docs/integrations/agentmail/" target="_blank">Agent Mail</a>.</p>
+<p>📌 You can checkout the tools exposed by this MCP server using the <a href="https://modelcontextprotocol.io/docs/tools/inspector" target="_blank">MCP inspector</a> 🔍 if can run locally.</p>
+<p>📌 Before you proceed further let&#39;s take a moment to understand the <a href="https://google.github.io/adk-docs/tools-custom/mcp-tools/#deployment-patterns" target="_blank">deployment patterns</a> in agentic systems.</p>
+<p>For this one we will choose to run as <strong>Self-Contained Stdio MCP Server</strong> as opposed to our remote servers.</p>
+<ol type="1">
+<li>So, let&#39;s first setup Agent Mail for which you need to do the following:</li>
+</ol>
+<ul>
+<li>Sign up to Agent Mail - yes I get it!🙄 But hey, you can use this for future agentic experiments!</li>
+<li>Create an inbox to use for sending emails</li>
+<li>Create an API key for MCP server calls</li>
+</ul>
+<p class="image-container"><img alt="Agent Mail Configured" src="img/dcb2397666ee2fd4.png"></p>
+<ol type="1" start="2">
+<li>Add the AgentMail API key to your <code>.env</code> file:</li>
+</ol>
+<pre><code>AGENTMAIL_API_KEY=your-api-key
+</code></pre>
+<ol type="1" start="3">
+<li>Update imports:</li>
+</ol>
+<pre><code>from google.adk.tools.mcp_tool.mcp_session_manager import StdioConnectionParams, StreamableHTTPConnectionParams
+from mcp import StdioServerParameters
+</code></pre>
+<ol type="1" start="4">
+<li>Let&#39;s configure the stdio MCP server in our ADK project:</li>
+</ol>
+<pre><code>agentmail_env = os.environ.copy()
+agentmail_env[&#34;AGENTMAIL_API_KEY&#34;] = os.environ.get(&#34;AGENTMAIL_API_KEY&#34;)
+inbox_id=&#34;your-inbox-id&#34;
+send_email = McpToolset(
+    connection_params=StdioConnectionParams(
+        server_params=StdioServerParameters(
+            command=&#34;npx&#34;,
+            args=[
+                &#34;-y&#34;,
+                &#34;agentmail-mcp&#34;,
+            ],
+            env=agentmail_env
+        ),
+        timeout=10,
+    ), tool_filter=[&#34;send_message&#34;]
+)
+</code></pre>
+<ol type="1" start="5">
+<li>Finally, let&#39;s add it to the tools available for our agent and update it&#39;s instructions and description.</li>
+</ol>
+<pre><code>root_agent = Agent(
+    model=&#39;gemini-2.5-flash&#39;,
+    name=&#39;root_agent&#39;,
+    description=&#39;A helpful assistant for giving weather updates of a US location, creating weather postcards and sending the weather summary and postcard on email.&#39;,
+    instruction=f&#34;&#34;&#34;
+        You are helpful assistant that tells the weather of a US location using &#39;get_weather&#39; tool.
+        When the user provides a location, use &#39;get_coordinates&#39; to get the latitude and longitude of the place.
+        And pass it to the &#39;get_weather&#39; tool to provide weather details.
+        When user asks to generate the postcard, use the &#39;generate_weather_postcard&#39; tool.
+        You will generate a postcard image of aspect_ratio of 16:9 for the weather summary in the place specified by the user.
+        The image should be animated and colorful.
+        Store the generated postcard image to google cloud storage: {cloud_storage_url}.
+        You can return the HTTPS URL to the user!
+        When prompted to email the weather postcard, use &#39;send_email&#39; tool to send the email.
+        Create an nice HTML body that includes the weather summary in poetic form and the hyperlinked image URL to the postcard.
+        Subject should always be &#39;Weather Summary&#39;.
+        Note: We are not sending any attachments.
+        You can use {inbox_id} as the inbox_id for sending the email.
+    &#34;&#34;&#34;,
+    tools=[get_coordinates, get_weather, generate_weather_postcard, send_email]
+)
+</code></pre>
+<ol type="1" start="6">
+<li>Let&#39;s run it!! 🏃‍♀️‍➡️🏃‍♀️‍➡️</li>
+</ol>
+<pre><code>uv run adk web
+</code></pre>
+<p class="image-container"><img alt="ADK chaining maps + weather + imagen + agentmail" src="img/d64e59b2e96ab9b2.png"></p>
+<p>This is the email I got 🤩:</p>
+<p class="image-container"><img alt="Email with weather postcard - local server" src="img/7047a2049040f943.png"></p>
+<p>This is my weather postcard 💌:</p>
+<p class="image-container"><img alt="Postcard on email" src="img/740998da8f65fa13.png"></p>
+<p>I can see the glitter ✨ in your eyes 👀!</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Deploy your ADK agent on Cloud Run" duration="10">
+        <p>It is time we deploy our Agent with stdio AgentMail MCP server! But before we do that let&#39;s take a moment to revisit the final architecture of our application.</p>
+<p class="image-container"><img alt="Final architecture" src="img/7cb1c58a7fcfcf14.png"></p>
+<ol type="1">
+<li>As per the documentation, you need to add a Dockerfile to the root of your project specifying the npm packages or Python modules needed for your MCP server and the agent can pick it up.</li>
+</ol>
+<pre><code>FROM python:3.11-slim
+WORKDIR /app
+
+# Create a non-root user (best practice, consistent with adk output)
+RUN adduser --disabled-password --gecos &#34;&#34; myuser
+
+# Install Node.js and npm for MCP servers (requires root)
+RUN apt-get update &amp;&amp; apt-get install -y nodejs npm &amp;&amp; rm -rf /var/lib/apt/lists/*
+
+# Switch to the non-root user
+USER myuser
+ENV PATH=&#34;/home/myuser/.local/bin:$PATH&#34;
+
+# Install ADK and any other dependencies
+RUN pip install google-adk==1.26.0
+
+# Copy agent directory (adjust permissions for the non-root user)
+COPY --chown=myuser:myuser postcards /app/agents/postcards
+
+EXPOSE 8080
+
+# Start the ADK web server
+CMD adk web --port=8080 --host=0.0.0.0 --session_service_uri=memory:// --artifact_service_uri=memory:// &#34;/app/agents&#34;
+</code></pre>
+<ol type="1" start="2">
+<li>If you started using Vertex AI instead of relying on the API keys, then you need to get Application Default Credentials.</li>
+</ol>
+<pre><code>gcloud auth application-default login
+</code></pre>
+<ol type="1" start="3">
+<li>Let&#39;s copy our environment variables to a yml file in <code>/postcards_from_cloud</code> that we can pass during deployment:</li>
+</ol>
+<pre><code>touch env.yaml
+</code></pre>
+<p>⚠️⚠️ <strong>Please note:</strong> When you cloned the <code>/vertex-ai-genmedia</code> repo and created <code>/weather</code> mcp also within <code>postcards_from_cloud</code>, they make your project super chunky. So before any deployment, simply move these directories: <code>/vertex-ai-genmedia</code> and <code>/weather</code> outside the <code>postcards_from_cloud</code> or use a <code>.dockerignore</code>. Else you&#39;ll be uploading like ~650MB image - YOU DON&#39;T WANT THAT!</p>
+<p>Open <code>env.yaml</code> and copy your environment variables from <code>.env</code> file. And update them to an acceptable yaml format:</p>
+<pre><code>GOOGLE_GENAI_USE_VERTEXAI:&#39;1&#39;
+GOOGLE_GOOGLE_CLOUD_PROJECT:&#39;you-project&#39;
+GOOGLE_CLOUD_LOCATION:&#39;us-central1&#39;
+GOOGLE_API_KEY:&#39;your-api-key&#39;
+GOOGLE_MAPS_API_KEY:&#39;your-api-key&#39;
+AGENTMAIL_API_KEY:&#39;your-api-key&#39;
+</code></pre>
+<ol type="1" start="4">
+<li>Deploy on Cloud Run - we will need to use standard Cloud Run deployment and not <code>adk deploy</code> as it doesn&#39;t work at this stage.</li>
+</ol>
+<pre><code>gcloud run deploy adk-postcards\
+  --source . \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --port 8080
+  --env-vars-file env.yaml
+</code></pre>
+<ol type="1" start="5">
+<li>Tada! 🎉🎉🎉</li>
+</ol>
+<p class="image-container"><img alt="Final Agent Workflow with Chained MCP servers" src="img/3f858b73e14c40c7.png"></p>
+<p class="image-container"><img alt="Final Weather Postcard Email" src="img/37637c69bbdc6b88.png"></p>
+<p class="image-container"><img alt="Final Weather Postcard" src="img/657ac3b73d308c45.png"></p>
+<p>Yes, we did it!! 👩‍🍳😘</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Next steps: Agent-as-a-service" duration="5">
+        <p>Congratulations on coming this far!! 😎🎉 You are a true warrior! But the story doesn&#39;t end here..</p>
+<p>Did you know agents can be called as APIs?! Checkout <a href="https://google.github.io/adk-docs/runtime/api-server/" target="_blank">how to use API servers in ADK</a> to expose your agents.</p>
+<p>Enter ↵ <strong>Agents-as-a-service</strong>!!</p>
+<p>Let&#39;s give it a go:</p>
+<pre><code>curl --location &#39;your-cloud-run-url-for-adk/run&#39; \
+--header &#39;Authorization: Bearer $(gcloud auth print-access-token)&#39; \
+--header &#39;Content-Type: application/json&#39; \
+--data &#39;{
+    &#34;app_name&#34;: &#34;postcards&#34;,
+    &#34;user_id&#34;: &#34;user&#34;,
+    &#34;session_id&#34;: &#34;your-current-session-id&#34;,
+    &#34;new_message&#34;: {
+        &#34;role&#34;: &#34;user&#34;,
+        &#34;parts&#34;: [
+            {&#34;text&#34;: &#34;Can you give me the url to my weather postcard?&#34;}
+        ]
+    },
+    &#34;streaming&#34;: false
+}&#39;
+</code></pre>
+<p class="image-container"><img alt="cUrl Command in action" src="img/e2d4d58c921be92d.png"></p>
+<p>Again the postcard after opening the url returned in the response:</p>
+<p class="image-container"><img alt="Postcard from interaction" src="img/657ac3b73d308c45.png"></p>
+<p>Feels magical ✨🪄, isn&#39;t it?! Well this is just a start - you can do so much, I&#39;d be curios to know what you do next!</p>
+<p>Thanks! ♥️</p>
+
+
+      </google-codelab-step>
+    
+  </google-codelab>
+
+  <script src="https://storage.googleapis.com/claat-public/native-shim.js"></script>
+  <script src="https://storage.googleapis.com/claat-public/custom-elements.min.js"></script>
+  <script src="https://storage.googleapis.com/claat-public/prettify.js"></script>
+  <script src="https://storage.googleapis.com/claat-public/codelab-elements.js"></script>
+  <script src="//support.google.com/inapp/api.js"></script>
+
+</body>
+</html>

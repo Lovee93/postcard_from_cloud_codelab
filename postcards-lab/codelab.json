@@ -1,0 +1,29 @@
+{
+  "environment": "web",
+  "format": "html",
+  "prefix": "https://storage.googleapis.com",
+  "mainga": "UA-49880327-14",
+  "updated": "2026-03-10T21:22:01+11:00",
+  "id": "postcards-lab",
+  "duration": 105,
+  "title": "Postcards from the Cloud: Chaining MCP Servers with Gemini ADK 📬☁️",
+  "authors": "Lovee Jain",
+  "summary": "Postcards from the Cloud: Chaining MCP Servers with Gemini ADK",
+  "source": "postcard.md",
+  "theme": "",
+  "status": [
+    "published"
+  ],
+  "category": null,
+  "tags": [
+    "adk",
+    "agentmail",
+    "cloud-run",
+    "gemini",
+    "imagen",
+    "maps",
+    "mcp"
+  ],
+  "feedback": "https://linktr.ee/loveejain",
+  "url": "postcards-lab"
+}
