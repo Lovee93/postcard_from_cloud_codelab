@@ -226,15 +226,20 @@ cloudbuild.googleapis.com
       <google-codelab-step label="Building Your First ADK Agent" duration="10">
         <p>Now that your weather-mcp server is ready, let&#39;s create the client - our agent using <a href="https://google.github.io/adk-docs/" target="_blank">Agent Development Kit</a>.</p>
 <ol type="1">
-<li>For this you will need the API key which is linked to an active billing account. So let&#39;s get that from <a href="https://aistudio.google.com/" target="_blank">AI Studio</a>.</li>
+<li>For this you can either use the API key and get that from <a href="https://aistudio.google.com/" target="_blank">AI Studio</a> or simply use Vertex AI. I&#39;d prefer using Vertex AI. So make sure you have enabled Vertex AI APIs for it, you can do so by:</li>
 </ol>
-<p class="image-container"><img alt="AI studio API key" src="img/b4a9cf890a63aca.png"></p>
+<pre><code>gcloud services enable aiplatform.googleapis.com --project=YOUR_PROJECT_ID
+</code></pre>
 <ol type="1" start="2">
 <li>Again let&#39;s use the magic of uv and create a new ADK project in <code>/postcards_from_cloud</code>.</li>
 </ol>
-<pre><code>uv run adk create postcard
+<pre><code>cd ..
+mkdir adk-postcards
+cd adk-postcards
+uv init
+uv run adk create postcards
 </code></pre>
-<p>Choose the default model, and select Google AI. Enter the API key you got from the AI studio and done! Your project is ready.</p>
+<p>Choose the default model, and select Vertex AI, provide project name, region and you are done! Your project is ready.</p>
 <ol type="1" start="3">
 <li>Let&#39;s run it:</li>
 </ol>
@@ -303,6 +308,9 @@ from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnecti
   --api-target=service=mapstools.googleapis.com \
   --project=YOUR_PROJECT_ID
 </code></pre>
+<p>📌 [Optional] Enable the Maps MCP server:</p>
+<pre><code>gcloud beta services mcp enable mapstools.googleapis.com --project=YOUR_PROJECT_ID
+</code></pre>
 <ol type="1" start="3">
 <li>Copy the API key you get in the terminal. You can also confirm if your API key is created by going to: <a href="https://console.cloud.google.com/apis/credentials" target="_blank">https://console.cloud.google.com/apis/credentials</a></li>
 </ol>
@@ -346,7 +354,7 @@ get_coordinates = McpToolset(
     instruction=&#34;&#34;&#34;
         You are helpful assistant that tells the weather of a US location using &#39;get_weather&#39; tool.
         When the user provides a location, use &#39;get_coordinates&#39; to get the latitude and longitude of the place.
-        And pass it to the &#39;get_weather&#39; tool to provide weather details.
+        And pass the latitude and longitude with 2 decimal points to the &#39;get_weather&#39; tool to provide weather details.
     &#34;&#34;&#34;,
     tools=[get_coordinates, get_weather]
 )
@@ -387,7 +395,7 @@ get_coordinates = McpToolset(
     instruction=&#34;&#34;&#34;
         You are helpful assistant that tells the weather of a US location using &#39;get_weather&#39; tool.
         When the user provides a location, use &#39;get_coordinates&#39; to get the latitude and longitude of the place.
-        And pass it to the &#39;get_weather&#39; tool to provide weather details.
+        And pass the latitude and longitude with 2 decimal points to the &#39;get_weather&#39; tool to provide weather details.
         You can also send the weather summary on the email using &#39;mock_send_email&#39; tool.
     &#34;&#34;&#34;,
     tools=[get_coordinates, get_weather, mock_send_email]
@@ -417,7 +425,8 @@ get_coordinates = McpToolset(
 <ol type="1">
 <li>Let&#39;s clone this repo:</li>
 </ol>
-<pre><code>git clone https://github.com/GoogleCloudPlatform/vertex-ai-creative-studio.git
+<pre><code>cd ..
+git clone https://github.com/GoogleCloudPlatform/vertex-ai-creative-studio.git
 cd vertex-ai-creative-studio/experiments/mcp-genmedia/mcp-genmedia-go
 </code></pre>
 <p>📌 <strong>Note</strong>: You can install the Imagen MCP server and checkout how it works by following the instructions in the repo. However, since Cloud Shell has a strict 5GB persistent memory - it sometimes can run out of space, so it is recommended to install only in your local development environment. And that is why we will skip to deploying it in the following steps.</p>
@@ -523,7 +532,7 @@ echo &#34;Setup complete! Your storage bucket is: gs://$BUCKET_NAME&#34;
 <pre><code>cloud_storage_url = &#34;gs://your-project-genmedia-mcp-bucket&#34; # add the gcs url returned from previous step
 generate_weather_postcard = McpToolset(
     connection_params=StreamableHTTPConnectionParams(
-        url=&#34;your-cloud-run-imagen-mcp-url//mcp&#34;,
+        url=&#34;your-cloud-run-imagen-mcp-url/mcp&#34;,
         timeout=60,
         
     ), tool_filter=[&#34;imagen_t2i&#34;]
@@ -539,7 +548,7 @@ generate_weather_postcard = McpToolset(
     instruction=f&#34;&#34;&#34;
         You are helpful assistant that tells the weather of a US location using &#39;get_weather&#39; tool.
         When the user provides a location, use &#39;get_coordinates&#39; to get the latitude and longitude of the place.
-        And pass it to the &#39;get_weather&#39; tool to provide weather details.
+        And pass the latitude and longitude with 2 decimal points to the &#39;get_weather&#39; tool to provide weather details.
         When user asks to generate the postcard, use the &#39;generate_weather_postcard&#39; tool.
         You will generate a postcard image of aspect_ratio of 16:9 for the weather summary in the place specified by the user.
         The image should be animated and colorful.
@@ -552,11 +561,6 @@ generate_weather_postcard = McpToolset(
 <ol type="1" start="8">
 <li>Let&#39;s run:</li>
 </ol>
-<p>📌 <strong>Note</strong> at any point if you start getting <em>429 Resource Exhausted</em> errors, switch to using Vertex AI. All you need is to update your <code>.env</code> file:</p>
-<pre><code>GOOGLE_GENAI_USE_VERTEXAI=1
-GOOGLE_GOOGLE_CLOUD_PROJECT=your-project
-GOOGLE_CLOUD_LOCATION=us-central1
-</code></pre>
 <pre><code>uv run adk web
 </code></pre>
 <p class="image-container"><img alt="ADK chaining Maps + weather + Imagen" src="img/7b27c784dcc0fdf0.png"></p>
@@ -623,7 +627,7 @@ send_email = McpToolset(
     instruction=f&#34;&#34;&#34;
         You are helpful assistant that tells the weather of a US location using &#39;get_weather&#39; tool.
         When the user provides a location, use &#39;get_coordinates&#39; to get the latitude and longitude of the place.
-        And pass it to the &#39;get_weather&#39; tool to provide weather details.
+        And pass the latitude and longitude with 2 decimal points to the &#39;get_weather&#39; tool to provide weather details.
         When user asks to generate the postcard, use the &#39;generate_weather_postcard&#39; tool.
         You will generate a postcard image of aspect_ratio of 16:9 for the weather summary in the place specified by the user.
         The image should be animated and colorful.
@@ -693,10 +697,9 @@ CMD adk web --port=8080 --host=0.0.0.0 --session_service_uri=memory:// --artifac
 </ol>
 <pre><code>touch env.yaml
 </code></pre>
-<p>⚠️⚠️ <strong>Please note:</strong> When you cloned the <code>/vertex-ai-genmedia</code> repo and created <code>/weather</code> mcp also within <code>postcards_from_cloud</code>, they make your project super chunky. So before any deployment, simply move these directories: <code>/vertex-ai-genmedia</code> and <code>/weather</code> outside the <code>postcards_from_cloud</code> or use a <code>.dockerignore</code>. Else you&#39;ll be uploading like ~650MB image - YOU DON&#39;T WANT THAT!</p>
 <p>Open <code>env.yaml</code> and copy your environment variables from <code>.env</code> file. And update them to an acceptable yaml format:</p>
 <pre><code>GOOGLE_GENAI_USE_VERTEXAI:&#39;1&#39;
-GOOGLE_GOOGLE_CLOUD_PROJECT:&#39;you-project&#39;
+GOOGLE_GOOGLE_CLOUD_PROJECT:&#39;your-project&#39;
 GOOGLE_CLOUD_LOCATION:&#39;us-central1&#39;
 GOOGLE_API_KEY:&#39;your-api-key&#39;
 GOOGLE_MAPS_API_KEY:&#39;your-api-key&#39;
@@ -709,7 +712,7 @@ AGENTMAIL_API_KEY:&#39;your-api-key&#39;
   --source . \
   --region us-central1 \
   --allow-unauthenticated \
-  --port 8080
+  --port 8080 \
   --env-vars-file env.yaml
 </code></pre>
 <ol type="1" start="5">

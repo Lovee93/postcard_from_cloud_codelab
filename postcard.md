@@ -241,16 +241,23 @@ Duration: 10
 
 Now that your weather-mcp server is ready, let's create the client - our agent using [Agent Development Kit](https://google.github.io/adk-docs/).
 
-1. For this you will need the API key which is linked to an active billing account. So let's get that from [AI Studio](https://aistudio.google.com/).
+1. For this you can either use the API key and get that from [AI Studio](https://aistudio.google.com/) or simply use Vertex AI. I'd prefer using Vertex AI. So make sure you have enabled Vertex AI APIs for it, you can do so by:
 
-![AI studio API key](assets/ai_studio.png)
+```
+gcloud services enable aiplatform.googleapis.com --project=YOUR_PROJECT_ID
+```
 
 2. Again let's use the magic of uv and create a new ADK project in `/postcards_from_cloud`.
+
 ```
-uv run adk create postcard
+cd ..
+mkdir adk-postcards
+cd adk-postcards
+uv init
+uv run adk create postcards
 ```
 
-Choose the default model, and select Google AI. Enter the API key you got from the AI studio and done! Your project is ready.
+Choose the default model, and select Vertex AI, provide project name, region and you are done! Your project is ready.
 
 3. Let's run it:
 
@@ -331,6 +338,12 @@ gcloud services api-keys create \
   --project=YOUR_PROJECT_ID
 ```
 
+📌 [Optional] Enable the Maps MCP server:
+
+```
+gcloud beta services mcp enable mapstools.googleapis.com --project=YOUR_PROJECT_ID
+```
+
 3. Copy the API key you get in the terminal. You can also confirm if your API key is created by going to: [https://console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials)
 
 ![Confirm API key](assets/confirm_api_key.png)
@@ -379,7 +392,7 @@ root_agent = Agent(
     instruction="""
         You are helpful assistant that tells the weather of a US location using 'get_weather' tool.
         When the user provides a location, use 'get_coordinates' to get the latitude and longitude of the place.
-        And pass it to the 'get_weather' tool to provide weather details.
+        And pass the latitude and longitude with 2 decimal points to the 'get_weather' tool to provide weather details.
     """,
     tools=[get_coordinates, get_weather]
 )
@@ -426,7 +439,7 @@ root_agent = Agent(
     instruction="""
         You are helpful assistant that tells the weather of a US location using 'get_weather' tool.
         When the user provides a location, use 'get_coordinates' to get the latitude and longitude of the place.
-        And pass it to the 'get_weather' tool to provide weather details.
+        And pass the latitude and longitude with 2 decimal points to the 'get_weather' tool to provide weather details.
         You can also send the weather summary on the email using 'mock_send_email' tool.
     """,
     tools=[get_coordinates, get_weather, mock_send_email]
@@ -465,6 +478,7 @@ So glad you decided to take up the challenge! Let's make it worth. We will be ex
 1. Let's clone this repo:
 
 ```
+cd ..
 git clone https://github.com/GoogleCloudPlatform/vertex-ai-creative-studio.git
 cd vertex-ai-creative-studio/experiments/mcp-genmedia/mcp-genmedia-go
 ```
@@ -579,7 +593,7 @@ Awesome, it is time to use our MCP server in ADK!
 cloud_storage_url = "gs://your-project-genmedia-mcp-bucket" # add the gcs url returned from previous step
 generate_weather_postcard = McpToolset(
     connection_params=StreamableHTTPConnectionParams(
-        url="your-cloud-run-imagen-mcp-url//mcp",
+        url="your-cloud-run-imagen-mcp-url/mcp",
         timeout=60,
         
     ), tool_filter=["imagen_t2i"]
@@ -596,7 +610,7 @@ root_agent = Agent(
     instruction=f"""
         You are helpful assistant that tells the weather of a US location using 'get_weather' tool.
         When the user provides a location, use 'get_coordinates' to get the latitude and longitude of the place.
-        And pass it to the 'get_weather' tool to provide weather details.
+        And pass the latitude and longitude with 2 decimal points to the 'get_weather' tool to provide weather details.
         When user asks to generate the postcard, use the 'generate_weather_postcard' tool.
         You will generate a postcard image of aspect_ratio of 16:9 for the weather summary in the place specified by the user.
         The image should be animated and colorful.
@@ -608,13 +622,6 @@ root_agent = Agent(
 ```
 
 8. Let's run: 
-
-📌 **Note** at any point if you start getting *429 Resource Exhausted* errors, switch to using Vertex AI. All you need is to update your `.env` file:
-```
-GOOGLE_GENAI_USE_VERTEXAI=1
-GOOGLE_GOOGLE_CLOUD_PROJECT=your-project
-GOOGLE_CLOUD_LOCATION=us-central1
-```
 
 ```
 uv run adk web
@@ -695,7 +702,7 @@ root_agent = Agent(
     instruction=f"""
         You are helpful assistant that tells the weather of a US location using 'get_weather' tool.
         When the user provides a location, use 'get_coordinates' to get the latitude and longitude of the place.
-        And pass it to the 'get_weather' tool to provide weather details.
+        And pass the latitude and longitude with 2 decimal points to the 'get_weather' tool to provide weather details.
         When user asks to generate the postcard, use the 'generate_weather_postcard' tool.
         You will generate a postcard image of aspect_ratio of 16:9 for the weather summary in the place specified by the user.
         The image should be animated and colorful.
@@ -779,14 +786,11 @@ gcloud auth application-default login
 touch env.yaml
 ```
 
-⚠️⚠️ **Please note:** When you cloned the `/vertex-ai-genmedia` repo and created `/weather` mcp also within `postcards_from_cloud`, they make your project super chunky. So before any deployment, simply move these directories: `/vertex-ai-genmedia` and `/weather` outside the `postcards_from_cloud` or use a `.dockerignore`. Else you'll be uploading like ~650MB image - YOU DON'T WANT THAT!
-
-
 Open `env.yaml` and copy your environment variables from `.env` file. And update them to an acceptable yaml format:
 
 ```
 GOOGLE_GENAI_USE_VERTEXAI:'1'
-GOOGLE_GOOGLE_CLOUD_PROJECT:'you-project'
+GOOGLE_GOOGLE_CLOUD_PROJECT:'your-project'
 GOOGLE_CLOUD_LOCATION:'us-central1'
 GOOGLE_API_KEY:'your-api-key'
 GOOGLE_MAPS_API_KEY:'your-api-key'
@@ -800,7 +804,7 @@ gcloud run deploy adk-postcards\
   --source . \
   --region us-central1 \
   --allow-unauthenticated \
-  --port 8080
+  --port 8080 \
   --env-vars-file env.yaml
 ```
 
