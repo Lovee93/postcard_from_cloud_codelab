@@ -75,7 +75,7 @@ touch weather.py
 <ol type="1" start="2">
 <li>Let&#39;s build the server next. Add the following to <code>weather.py</code>:</li>
 </ol>
-<pre><code>from typing import Any
+<pre><code language="language-python" class="language-python">from typing import Any
 
 import asyncio
 import httpx
@@ -92,7 +92,7 @@ USER_AGENT = &#34;weather-app/1.0&#34;
 <ol type="1" start="3">
 <li>Add helper functions:</li>
 </ol>
-<pre><code>async def make_nws_request(url: str) -&gt; dict[str, Any] | None:
+<pre><code language="language-python" class="language-python">async def make_nws_request(url: str) -&gt; dict[str, Any] | None:
     &#34;&#34;&#34;Make a request to the NWS API with proper error handling.&#34;&#34;&#34;
     headers = {&#34;User-Agent&#34;: USER_AGENT, &#34;Accept&#34;: &#34;application/geo+json&#34;}
     async with httpx.AsyncClient() as client:
@@ -106,7 +106,7 @@ USER_AGENT = &#34;weather-app/1.0&#34;
 <ol type="1" start="4">
 <li>Implement tool execution:</li>
 </ol>
-<pre><code>@mcp.tool()
+<pre><code language="language-python" class="language-python">@mcp.tool()
 async def get_forecast(latitude: float, longitude: float) -&gt; str:
     &#34;&#34;&#34;Get weather forecast for a location.
 
@@ -145,7 +145,7 @@ async def get_forecast(latitude: float, longitude: float) -&gt; str:
 <ol type="1" start="5">
 <li>Let&#39;s add the main function to initialise and run the server :</li>
 </ol>
-<pre><code>if __name__ == &#34;__main__&#34;:
+<pre><code language="language-python" class="language-python">if __name__ == &#34;__main__&#34;:
     # Initialize and run the server
     port = int(os.environ.get(&#34;PORT&#34;, 8080))
     asyncio.run(
@@ -173,7 +173,7 @@ async def get_forecast(latitude: float, longitude: float) -&gt; str:
 <ol type="1" start="8">
 <li>Create the Dockerfile:</li>
 </ol>
-<pre><code>FROM python:3.12-slim
+<pre><code language="language-Dockerfile" class="language-Dockerfile">FROM python:3.12-slim
 
 # Install uv from official image
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
@@ -217,6 +217,7 @@ cloudbuild.googleapis.com
 <p>Once logged in confgiure the project that is linked to an active billing account:</p>
 <pre><code language="language-bash" class="language-bash">gcloud config set project YOUR_PROJECT_ID
 </code></pre>
+<p>And then try the deployment again!</p>
 <ol type="1" start="10">
 <li>It&#39;s time to test our deployed custom weather MCP server in <a href="https://glama.ai/mcp/inspector" target="_blank">Glama Inspector</a>!</li>
 </ol>
@@ -257,14 +258,14 @@ adk create postcards
 <ol type="1">
 <li>Add required imports:</li>
 </ol>
-<pre><code>from google.adk.tools.mcp_tool import McpToolset
+<pre><code language="language-python" class="language-python">from google.adk.tools.mcp_tool import McpToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
 </code></pre>
 <ol type="1" start="2">
 <li>Next, we will add MCPToolSet that defines how to call our weather mcp server.</li>
 </ol>
 <p>📌 Now if you are connecting to a server running locally, in that scenario, you use MCP stdio connection, where you specify the command and the agruments. But in real world, when you would look at architecting real services, HTTP becomes a natural choice as it allows you to scale your services and agents independently.</p>
-<pre><code>get_weather = McpToolset(
+<pre><code language="language-python" class="language-python">get_weather = McpToolset(
     connection_params=StreamableHTTPConnectionParams(
         url=&#34;your-cloud-run-weather-mcp-url/mcp&#34;,
         timeout=60, # This allows to initialise mcp servers on the go, without timing out
@@ -274,7 +275,7 @@ from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnecti
 <ol type="1" start="3">
 <li>Let&#39;s pass the tools from the MCP server to our agent and update the agent description and instructions.</li>
 </ol>
-<pre><code>root_agent = Agent(
+<pre><code language="language-python" class="language-python">root_agent = Agent(
     model=&#39;gemini-2.5-flash&#39;,
     name=&#39;root_agent&#39;,
     description=&#39;A helpful assistant for giving weather updates of a US location.&#39;,
@@ -327,12 +328,12 @@ from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnecti
 <ol type="1" start="5">
 <li>Next, update the imports in our <code>agent.py</code>:</li>
 </ol>
-<pre><code>import os
+<pre><code language="language-python" class="language-python">import os
 </code></pre>
 <ol type="1" start="6">
 <li>Next, configure the remote Google Maps MCP server for our agent to pick up.</li>
 </ol>
-<pre><code>google_maps_api_key = os.environ.get(&#34;GOOGLE_MAPS_API_KEY&#34;)
+<pre><code language="language-python" class="language-python">google_maps_api_key = os.environ.get(&#34;GOOGLE_MAPS_API_KEY&#34;)
 if not google_maps_api_key:
     raise ValueError(&#34;GOOGLE_MAPS_API_KEY environment variable is not set&#34;)
 headers = {
@@ -349,7 +350,7 @@ get_coordinates = McpToolset(
 <ol type="1" start="7">
 <li>Finally let&#39;s pass the tools from this MCPToolSet to our agent and update the description and instructions:</li>
 </ol>
-<pre><code>root_agent = Agent(
+<pre><code language="language-python" class="language-python">root_agent = Agent(
     model=&#39;gemini-2.5-flash&#39;,
     name=&#39;root_agent&#39;,
     description=&#39;A helpful assistant for giving weather updates of a US location.&#39;,
@@ -384,13 +385,13 @@ get_coordinates = McpToolset(
 <ol type="1">
 <li>Let&#39;s create the function in <code>agent.py</code>:</li>
 </ol>
-<pre><code>def mock_send_email(email: str) -&gt; str:
+<pre><code language="language-python" class="language-python">def mock_send_email(email: str) -&gt; str:
     return f&#34;Thanks I have sent the email on {email}&#34;
 </code></pre>
 <ol type="1" start="2">
 <li>Let&#39;s pass it as a tool and update the description and instructions of the agent.</li>
 </ol>
-<pre><code>root_agent = Agent(
+<pre><code language="language-python" class="language-python">root_agent = Agent(
     model=&#39;gemini-2.5-flash&#39;,
     name=&#39;root_agent&#39;,
     description=&#39;A helpful assistant for giving weather updates of a US location and sending that weather summary on emails.&#39;,
@@ -435,7 +436,7 @@ cd vertex-ai-creative-studio/experiments/mcp-genmedia/mcp-genmedia-go
 <ol type="1" start="2">
 <li>Create a Dockerfile in under <code>vertex-ai-creative-studio/experiments/mcp-genmedia/mcp-genmedia-go</code>:</li>
 </ol>
-<pre><code># Build stage
+<pre><code language="language-Dockerfile" class="language-Dockerfile"># Build stage
 FROM golang:1.24-bookworm AS builder
 
 # Set the working directory
@@ -525,13 +526,12 @@ gcloud storage buckets add-iam-policy-binding gs://$BUCKET_NAME \
 
 
 echo &#34;Setup complete! Your storage bucket is: gs://$BUCKET_NAME&#34;
-
 </code></pre>
 <p>Awesome, it is time to use our MCP server in ADK!</p>
 <ol type="1" start="6">
 <li>Add the deployed Imagen MCP server to ADK <code>agent.py</code>:</li>
 </ol>
-<pre><code>cloud_storage_url = &#34;gs://your-project-genmedia-mcp-bucket&#34; # add the gcs url returned from previous step
+<pre><code language="language-python" class="language-python">cloud_storage_url = &#34;gs://your-project-genmedia-mcp-bucket&#34; # add the gcs url returned from previous step
 generate_weather_postcard = McpToolset(
     connection_params=StreamableHTTPConnectionParams(
         url=&#34;your-cloud-run-imagen-mcp-url/mcp&#34;,
@@ -543,7 +543,7 @@ generate_weather_postcard = McpToolset(
 <ol type="1" start="7">
 <li>Add it to our list of toolset that agent can use and update agent description and instructions:</li>
 </ol>
-<pre><code>root_agent = Agent(
+<pre><code language="language-python" class="language-python">root_agent = Agent(
     model=&#39;gemini-2.5-flash&#39;,
     name=&#39;root_agent&#39;,
     description=&#39;A helpful assistant for giving weather updates of a US location and creating weather postcards.&#39;,
@@ -596,13 +596,13 @@ generate_weather_postcard = McpToolset(
 <ol type="1" start="3">
 <li>Update imports in <code>agent.py</code>:</li>
 </ol>
-<pre><code>from google.adk.tools.mcp_tool.mcp_session_manager import StdioConnectionParams, StreamableHTTPConnectionParams
+<pre><code language="language-python" class="language-python">from google.adk.tools.mcp_tool.mcp_session_manager import StdioConnectionParams, StreamableHTTPConnectionParams
 from mcp import StdioServerParameters
 </code></pre>
 <ol type="1" start="4">
 <li>Let&#39;s configure the stdio MCP server in our ADK project:</li>
 </ol>
-<pre><code>agentmail_env = os.environ.copy()
+<pre><code language="language-python" class="language-python">agentmail_env = os.environ.copy()
 agentmail_env[&#34;AGENTMAIL_API_KEY&#34;] = os.environ.get(&#34;AGENTMAIL_API_KEY&#34;)
 inbox_id=&#34;your-inbox-id&#34;
 send_email = McpToolset(
@@ -622,7 +622,7 @@ send_email = McpToolset(
 <ol type="1" start="5">
 <li>Finally, let&#39;s add it to the tools available for our agent and update it&#39;s instructions and description.</li>
 </ol>
-<pre><code>root_agent = Agent(
+<pre><code language="language-python" class="language-python">root_agent = Agent(
     model=&#39;gemini-2.5-flash&#39;,
     name=&#39;root_agent&#39;,
     description=&#39;A helpful assistant for giving weather updates of a US location, creating weather postcards and sending the weather summary and postcard on email.&#39;,
@@ -665,7 +665,7 @@ send_email = McpToolset(
 <ol type="1">
 <li>As per the documentation, you need to add a Dockerfile to the root of your project specifying the npm packages or Python modules needed for your MCP server and the agent can pick it up.</li>
 </ol>
-<pre><code>FROM python:3.11-slim
+<pre><code language="language-Dockerfile" class="language-Dockerfile">FROM python:3.11-slim
 WORKDIR /app
 
 # Create a non-root user (best practice, consistent with adk output)
