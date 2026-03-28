@@ -437,7 +437,7 @@ cd vertex-ai-creative-studio/experiments/mcp-genmedia/mcp-genmedia-go
 <li>Create a Dockerfile in under <code>vertex-ai-creative-studio/experiments/mcp-genmedia/mcp-genmedia-go</code>:</li>
 </ol>
 <pre><code language="language-Dockerfile" class="language-Dockerfile"># Build stage
-FROM golang:1.24-bookworm AS builder
+FROM golang:1.26-bookworm AS builder
 
 # Set the working directory
 WORKDIR /app
@@ -474,8 +474,7 @@ ENTRYPOINT [&#34;/mcp-imagen-go&#34;, &#34;--transport&#34;, &#34;http&#34;]
   --source . \
   --region us-central1 \
   --allow-unauthenticated \
-  --set-env-vars PROJECT_ID=$(gcloud config get project) \
-  --startup-probe=timeoutSeconds=10,tcpSocket.port=8080
+  --set-env-vars PROJECT_ID=$(gcloud config get project)
 </code></pre>
 <ol type="1" start="4">
 <li>Once the deployment is successful, you can checkout your deployed Imagen MCP server on Glama Inspector: 🔎</li>
