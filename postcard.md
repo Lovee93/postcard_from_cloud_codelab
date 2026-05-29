@@ -50,100 +50,16 @@ Make sure all the resources in this directory.
 
 📌 We will use `uv` which is the package or dependency manager in Python, it makes it super easy to create and manage virtual environments and manage dependencies in there.
 
-### Let's create weather MCP server
+### Let's clone weather MCP server
 
-1. We will use the standard example of customer weather MCP server which uses US National Weather Service API. The API uses the geo-coordinates to tell the weather of a **US location**.
+1. We will use the standard example of customer weather MCP server which uses US National Weather Service API. The API uses the geo-coordinates to tell the weather of a **US location**. I have already set it up for you so all you need to do is clone it.
 
 ```bash
-# Create a new directory for our project
-uv init weather
+git clone https://github.com/Lovee93/weather_mcp_python.git weather
 cd weather
-
-# Create virtual environment and activate it
-uv venv
-source .venv/bin/activate
-
-# Install dependencies
-uv add fastmcp httpx
-
-# Create our server file
-touch weather.py
 ```
 
-2. Let's build the server next. Add the following to `weather.py`:
-
-```python
-from typing import Any
-
-import asyncio
-import httpx
-import os
-from fastmcp import FastMCP
-
-# Initialize FastMCP server
-mcp = FastMCP("weather")
-
-# Constants
-NWS_API_BASE = "https://api.weather.gov"
-USER_AGENT = "weather-app/1.0"
-```
-
-3. Add helper functions:
-
-```python
-async def make_nws_request(url: str) -> dict[str, Any] | None:
-    """Make a request to the NWS API with proper error handling."""
-    headers = {"User-Agent": USER_AGENT, "Accept": "application/geo+json"}
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(url, headers=headers, timeout=30.0)
-            response.raise_for_status()
-            return response.json()
-        except Exception:
-            return None
-```
-
-4. Implement tool execution:
-
-```python
-@mcp.tool()
-async def get_forecast(latitude: float, longitude: float) -> str:
-    """Get weather forecast for a location.
-
-    Args:
-        latitude: Latitude of the location
-        longitude: Longitude of the location
-    """
-    # First get the forecast grid endpoint
-    points_url = f"{NWS_API_BASE}/points/{latitude},{longitude}"
-    points_data = await make_nws_request(points_url)
-
-    if not points_data:
-        return "Unable to fetch forecast data for this location."
-
-    # Get the forecast URL from the points response
-    forecast_url = points_data["properties"]["forecast"]
-    forecast_data = await make_nws_request(forecast_url)
-
-    if not forecast_data:
-        return "Unable to fetch detailed forecast."
-
-    # Format the periods into a readable forecast
-    periods = forecast_data["properties"]["periods"]
-    forecasts = []
-    for period in periods[:5]:  # Only show next 5 periods
-        forecast = f"""
-          {period["name"]}:
-          Temperature: {period["temperature"]}°{period["temperatureUnit"]}
-          Wind: {period["windSpeed"]} {period["windDirection"]}
-          Forecast: {period["detailedForecast"]}
-        """
-        forecasts.append(forecast)
-
-    return "\n---\n".join(forecasts)
-```
-
-5. Let's add the main function to initialise and run the server :
+Look how we have define the main function to initialise and run the server:
 ```python
 if __name__ == "__main__":
     # Initialize and run the server
@@ -156,58 +72,31 @@ if __name__ == "__main__":
         )
     )
 ``` 
+This allows us to run the MCP server with Streamable HTTP Transport type as opposed to Standard IO.
 
-6. It is ready, let's run the server:
+2. Let's run the server:
 
 ```bash
 uv run weather.py
 ```
 
-7. How do we test it though? 
+3. How do we test it though?<br> 
 
-a. **MCP inspectors**! 🔎 
+    a. **MCP inspectors**! 🔎 
 
-```bash
-npx @modelcontextprotocol/inspector
-```
+    ```bash
+    npx @modelcontextprotocol/inspector
+    ```
 
-b. The Glama inspector - remote inspector! 🔎💻
+    b. The Glama inspector - remote inspector! 🔎💻
 
-[https://glama.ai/mcp/inspector](https://glama.ai/mcp/inspector)
+    [https://glama.ai/mcp/inspector](https://glama.ai/mcp/inspector)
 
-But for that we first need to deploy! So, let's create the Dockerfile to define the image for MCP and deploy on cloud run.
+But for that we first need to deploy! 
 
-8. Create the Dockerfile:
+You might notice, the MCP server also has a Dockerfile. This Dockerfile defines the image for our weather MCP so it can be deployed on cloud run.
 
-```Dockerfile
-FROM python:3.12-slim
-
-# Install uv from official image
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
-
-# Set the working directory
-WORKDIR /app
-
-# Copy dependency files
-COPY pyproject.toml uv.lock ./
-
-# Install dependencies into the local .venv
-RUN uv sync --frozen --no-dev
-
-# Copy weather.py
-COPY weather.py .
-
-# Cloud Run sets the PORT environment variable natively
-ENV PORT=8080
-
-# Expose the port
-EXPOSE $PORT
-
-# Run the weather server using uv
-CMD ["uv", "run", "weather.py"]
-```
-
-9. Let's deploy on cloud run! But first enable the Cloud Run and Cloud Build APIs:
+4. Let's deploy on cloud run! But first enable the Cloud Run and Cloud Build APIs:
 
 ```bash
 gcloud services enable run.googleapis.com \
@@ -234,7 +123,7 @@ gcloud config set project YOUR_PROJECT_ID
 
 And then try the deployment again!
 
-10. It's time to test our deployed custom weather MCP server in [Glama Inspector](https://glama.ai/mcp/inspector)!
+5. It's time to test our deployed custom weather MCP server in [Glama Inspector](https://glama.ai/mcp/inspector)!
 
 ![Glama inspector weather-mcp](assets/glama_weather_mcp.png)
 
@@ -250,10 +139,35 @@ Now that your weather-mcp server is ready, let's create the client - our agent u
 1. For this you can either use the API key and get that from [AI Studio](https://aistudio.google.com/) or simply use Vertex AI. I'd prefer using Vertex AI. So make sure you have enabled Vertex AI APIs for it, you can do so by:
 
 ```bash
-gcloud services enable aiplatform.googleapis.com --project=YOUR_PROJECT_ID
+export YOUR_PROJECT_ID=get-your-project-id
+gcloud services enable \
+  aiplatform.googleapis.com \
+  run.googleapis.com \
+  artifactregistry.googleapis.com \
+  cloudbuild.googleapis.com \
+  secretmanager.googleapis.com \
+  --project=$YOUR_PROJECT_ID
 ```
 
-2. Again let's use the magic of uv and create a new ADK project in `/postcards_from_cloud`.
+2. Make sure ADK is installed:
+
+```bash
+adk --version
+```
+
+⚠️ Please note: If you are developing with ADK on cloudshell, you will need to use an older version of ADK otherwise you will get the CORS error when running the agent. Either use the following version of ADK:
+
+```bash
+pip install google-adk==1.24.0
+```
+Or install the latest one if developing on the local machine:
+
+```bash
+pip install google-adk
+```
+
+
+3. Now that we have installed ADK and have relevant APIs enabled, let's create a new ADK project in `/postcards_from_cloud`.
 
 ```bash
 cd ..
@@ -264,7 +178,7 @@ adk create postcards
 
 Choose the default model, and select Vertex AI, provide project name, region and you are done! Your project is ready.
 
-3. Let's run it:
+4. Let's run it:
 
 ```bash
 adk web
@@ -331,7 +245,11 @@ Like all major players, Google has released it's MCP servers too! Some still exp
 
 📌 We will use [Maps Grounding Lite MCP server](https://developers.google.com/maps/ai/grounding-lite). And hence to be able to use it we need to enable the Maps API in our console and get an API key. 
 
-1. Enable Google Maps Grounding Lite API. Go to [Maps Grounding Lite](https://console.cloud.google.com/apis/library/mapstools.googleapis.com) in your console and enable the API.
+1. Enable Google Maps Grounding Lite API. You can either enable it on the console at [Maps Grounding Lite](https://console.cloud.google.com/apis/library/mapstools.googleapis.com) or run the following cli command:
+
+```bash
+gcloud services enable mapstools.googleapis.com --project=$YOUR_PROJECT_ID
+```
 
 ![Enable Google Maps Grounding Lite API](assets/enable_maps_api.png)
 
@@ -340,13 +258,13 @@ Like all major players, Google has released it's MCP servers too! Some still exp
 gcloud services api-keys create \
   --display-name="Maps Grounding Lite Key" \
   --api-target=service=mapstools.googleapis.com \
-  --project=YOUR_PROJECT_ID
+  --project=$YOUR_PROJECT_ID
 ```
 
-📌 [Optional] Enable the Maps MCP server:
+📌 Don't forget to Enable the Maps MCP server:
 
 ```bash
-gcloud beta services mcp enable mapstools.googleapis.com --project=YOUR_PROJECT_ID
+gcloud beta services mcp enable mapstools.googleapis.com --project=$YOUR_PROJECT_ID
 ```
 
 3. Copy the API key you get in the terminal. You can also confirm if your API key is created by going to: [https://console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials)
@@ -466,7 +384,7 @@ You can use the following command to deploy your agent:
 
 ```bash
 adk deploy cloud_run \
-  --project=your-project \
+  --project=$YOUR_PROJECT_ID \
   --with_ui \
   --region=us-central1\
   --service_name=adk-postcards \
